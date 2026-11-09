@@ -220,10 +220,11 @@ pre{margin:0;max-height:320px;overflow:auto;background:#06101a;color:#bad7e8;pad
       <div class="lookup-grid">
         <input id="vin" maxlength="17" autocomplete="off" spellcheck="false" placeholder="Enter 17-character VIN">
         <button id="decodeBtn" class="btn primary">DECODE VIN</button>
+<button id="scanVinBtn" type="button" class="btn">📷 SCAN VIN BARCODE</button>
         <button id="copySpecsBtn" class="btn">COPY SPECS</button>
         <button id="clearVinBtn" class="btn ghost">CLEAR</button>
       </div>
-      <div id="status" class="status">Enter a 17-character VIN to begin.</div>
+      <div id="vinScanner" hidden><video id="scanVideo" autoplay muted playsinline style="width:100%;max-height:320px;background:#000"></video><button id="stopScanBtn" type="button" class="btn">STOP CAMERA</button><p id="scanHint">Point camera at VIN barcode.</p></div><div id="status" class="status">Enter a 17-character VIN to begin.</div>
     </div>
   </section>
 
@@ -925,6 +926,12 @@ $('copyDescriptionBtn').onclick=()=>copyText($('finalDescription').value);
 $('resetBuilderBtn').onclick=resetBuilder;
 $('clearBuilderBtn').onclick=clearBuilder;
 $('finalDescription').addEventListener('input',()=>{updateCharCount();saveBuilderDraft()});
+
+
+let scanStream=null,scanRunning=false,scanFrame=0;
+function stopScan(){scanRunning=false;cancelAnimationFrame(scanFrame);if(scanStream){scanStream.getTracks().forEach(t=>t.stop());scanStream=null}document.getElementById('scanVideo').srcObject=null;document.getElementById('vinScanner').hidden=true}
+async function startScan(){if(scanRunning)return;if(!window.isSecureContext||!navigator.mediaDevices?.getUserMedia||!window.BarcodeDetector){setStatus('Camera barcode scanning is unavailable in this browser. Use HTTPS and a browser with BarcodeDetector support, or type the VIN.','bad');return}try{const formats=(await BarcodeDetector.getSupportedFormats()).filter(x=>['code_39','code_128','pdf417','data_matrix','qr_code'].includes(x));if(!formats.length)throw Error('Unsupported barcode formats');const detector=new BarcodeDetector({formats});scanStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}},audio:false});scanRunning=true;document.getElementById('vinScanner').hidden=false;const video=document.getElementById('scanVideo');video.srcObject=scanStream;await video.play();const tick=async()=>{if(!scanRunning)return;try{if(video.readyState>=2){const codes=await detector.detect(video);if(!scanRunning)return;for(const code of codes){const v=String(code.rawValue||'').toUpperCase().replace(/[^A-Z0-9]/g,'');const vin=(v.match(/[A-HJ-NPR-Z0-9]{17}/g)||[])[0];if(vin){document.getElementById('vin').value=vin;stopScan();decodeVIN();return}}}}catch(e){document.getElementById('scanHint').textContent='Scanning... improve lighting or try manual entry.'}if(scanRunning)scanFrame=requestAnimationFrame(tick)};tick()}catch(e){stopScan();setStatus(e?.name==='NotAllowedError'?'Camera permission denied. Enable it in browser settings.':'Unable to start barcode scanner. Enter VIN manually.','bad')}}
+document.getElementById('scanVinBtn').addEventListener('click',startScan);document.getElementById('stopScanBtn').addEventListener('click',stopScan);document.addEventListener('visibilitychange',()=>{if(document.hidden)stopScan()});window.addEventListener('pagehide',stopScan);
 
 clearVehicle();renderHistory();renderPhraseLibrary();wireQuickTemplateChoices();loadBuilderDraft();updateEmptyState();updateCharCount();
 })();
